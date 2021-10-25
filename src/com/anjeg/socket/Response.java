@@ -65,7 +65,7 @@ public class Response {
 	 * Get the data linked with the response, you should check the object
 	 * type before using it.
 	 * 
-	 * @return
+	 * @return The data object
 	 */
 	public Object getData() {
 		return this.data;

@@ -1,7 +1,7 @@
 package com.anjeg;
 
-import com.anjeg.controller.socket.Client;
-import com.anjeg.controller.socket.Request;
+import com.anjeg.socket.Client;
+import com.anjeg.socket.Request;
 
 public class Example {
 

@@ -1,4 +1,4 @@
-package com.anjeg.controller.socket;
+package com.anjeg.socket;
 
 import java.util.Random;
 

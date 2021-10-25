@@ -7,6 +7,9 @@ import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.LinkedBlockingQueue;
 
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
@@ -35,6 +38,10 @@ public class Client {
 	private Socket socket;
 	private InputStream input;
 	private PrintWriter output;
+	
+	private ThreadGroup threads;
+	private LinkedBlockingQueue<Request> requestQueue;
+	private Map<String, ClientListener> listeners;
 	
 	/* ************************************************************************
 	 * Constructor
@@ -66,13 +73,13 @@ public class Client {
 
 		try {
 			this.socket = new Socket(host, port);
-			System.out.println("[socket] connected");
+			System.out.println("[client] connected");
 			this.input = this.socket.getInputStream();
 			this.output = new PrintWriter(new OutputStreamWriter(this.socket.getOutputStream()));
-			System.out.println("[socket] reader & writer ready");
+			System.out.println("[client] reader & writer ready");
 		} catch (IOException e) {
 			e.printStackTrace();
-			System.err.println("[socket] error while connecting");
+			System.err.println("[client] error while connecting");
 		}
 	}
 	
@@ -86,11 +93,11 @@ public class Client {
 			this.socket.close();
 			this.input.close();
 			this.output.close();
-			System.out.println("[socket] disconnected");
+			System.out.println("[client] disconnected");
 		}
 		catch (IOException e) {
 			e.printStackTrace();
-			System.err.println("[socket] error while disconnecting");
+			System.err.println("[client] error while disconnecting");
 		}
 	}
 	
@@ -157,8 +164,7 @@ public class Client {
 			
 		}
 		catch (IOException e) {
-			e.printStackTrace();
-			System.err.println("[socket] error while reading");
+			System.err.println("[client] error while reading");
 		} 
 		catch (ParseException e) {
 			e.printStackTrace();
@@ -167,7 +173,110 @@ public class Client {
 		
 		return null;
 	}
- 	
+	
+	/**
+	 * Start two thread to handle request & response.
+	 * One will be in charge of sending packages.
+	 * The other will handle the response from the server and give the response to a registered client listener
+	 */
+	public void startThreads() {
+		
+		this.requestQueue = new LinkedBlockingQueue<>();
+		this.listeners = new HashMap<>();
+		
+		this.threads = new ThreadGroup("client");
+		this.threads.setDaemon(true);
+		Thread tSend = new Thread(this.threads, this::runSend, "send");
+		Thread tRecieve = new Thread(this.threads, this::runRecieve, "recieve");
+		
+		tSend.start();
+		tRecieve.start();
+	}
+	
+	/**
+	 * Check if one of the thread is alive
+	 * 
+	 * @return either the group is destroyed or not
+	 */
+	public boolean areThreadsAlive() {
+		return !this.threads.isDestroyed();
+	}
+	
+	/**
+	 * Interrupt and notify all the running threads
+	 */
+	public void interruptThreads() {
+		this.threads.interrupt();
+		this.threads.notifyAll();
+	}
+	
+	/**
+	 * Offer a new request to the request blocking queue,
+	 * Map the listener with the request id.
+	 * 
+	 * @param request The request to send to the server
+	 * @param listener The listener which will handle the response
+	 * @return either the request is in the queue or not
+	 */
+	public boolean send(Request request, ClientListener listener) {
+		boolean offered = this.requestQueue.offer(request);
+		if(offered)
+			this.listeners.put(request.getRequestId(), listener);
+		return offered;
+	}
+	
+	/**
+	 * Sending thread,
+	 * it get the request to send from the blocking queue,
+	 * the thread stops when it is interrupted.
+	 */
+	private void runSend() {
+		System.out.println("[client-send] start");
+		
+		boolean run = true;
+		while(run) {
+			
+			try {
+				Request request = this.requestQueue.take();
+				this.write(request);
+			}
+			catch (InterruptedException e) {
+				run = false;
+			}
+			
+		}
+		
+		System.out.println("[client-send] end");
+	}
+	
+	/**
+	 * Recieving thread,
+	 * it recieve responses from the server and give the to listeners,
+	 * the threads stops when it is notified.
+	 */
+	private void runRecieve() {
+		System.out.println("[client-recv] start");
+
+		boolean run = true;
+		while(run) {
+			try {
+				Response response = this.read();
+				
+				if(this.listeners.containsKey(response.getId())) {
+					this.listeners.remove(response.getId()).handleResponse(response);
+				}
+				else {
+					System.err.println("[client-recv] response can't be handled");
+				}
+			}
+			catch(IllegalMonitorStateException e) {
+				run = false;
+			}
+		}
+
+		System.out.println("[client-recv] end");
+	}
+
 	/* ************************************************************************
 	 * Overrides
 	 * ***********************************************************************/

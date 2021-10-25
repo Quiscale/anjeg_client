@@ -28,10 +28,17 @@ public class Example {
 		
 		Client client = new Client();
 		client.connect(Example.HOST, Example.PORT);
-		client.write(Request.build("GET", "/shop", null));
-		System.out.println(client.read().getData());
-		client.disconnect();
+		client.startThreads();
 		
+		client.send(Request.build("GET", "/shop", null),
+				(response) -> {
+					System.out.println(response.getData());
+					client.interruptThreads();
+				});
+		
+		while(client.areThreadsAlive());
+		System.out.println("end");
+		client.disconnect();
 	}
 	
 	/* ************************************************************************

@@ -87,10 +87,21 @@ public class Request {
 	}
 	
 	/**
+	 * Set either the client ID is needed or not
+	 * 
+	 * @param needed True if the ID is needed
+	 * @return The current request
+	 */
+	public Request setClientIdNeeded(boolean needed) {
+		this.client_id_needed = needed;
+		return this;
+	}
+	
+	/**
 	 * Set the client ID
 	 * 
 	 * @param client_id The client ID
-	 * @return The current request, to make it easier to use
+	 * @return The current request
 	 */
 	public Request withId(String client_id) {
 		if(this.client_id_needed)

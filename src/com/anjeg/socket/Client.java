@@ -1,6 +1,5 @@
 package com.anjeg.socket;
 
-import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStreamWriter;
@@ -9,7 +8,7 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
@@ -39,9 +38,9 @@ public class Client {
 	private InputStream input;
 	private PrintWriter output;
 	
-	private ThreadGroup threads;
-	private LinkedBlockingQueue<Request> requestQueue;
-	private Map<String, ClientListener> listeners;
+	private Thread thread;
+	private ConcurrentLinkedQueue<Request> requests;
+	private Map<String, ClientListener> listeners; // <requestId, listener>
 	
 	/* ************************************************************************
 	 * Constructor
@@ -119,163 +118,128 @@ public class Client {
 	 * @return a Response object which encapsulate the server's response
 	 */
 	public Response read() {
+		
 		try {
-			// Read header
-			DataInputStream dis = new DataInputStream(this.input);
-			byte[] in = new byte[2048];
-			int i = 0;
-			byte b = 0;
-			while(b != '\n') {
-				b = dis.readByte();
-				in[i++] = b;
-			}
-			// Parse header
-			String header = new String(in, StandardCharsets.UTF_8);
-			String[] args = header.trim().split(" ");
-			Response response = new Response(
-					Integer.valueOf(args[0]).intValue(), // Status code
-					// args[1], // Version
-					args[2] // Response id
-				);
-			String type = args[3];
-			int dataLength = Integer.valueOf(args[4]).intValue();
-			// Read data
-			if(type.matches("(JSON)|(TEXT)")) {
-				dis.read(in, 0, dataLength);
-				in[dataLength] = 0;
-				String data = (new String(in, StandardCharsets.UTF_8)).substring(0, dataLength);
-				
-				if(type.matches("JSON")) {
-					JSONParser parser = new JSONParser();
-					response.setData((JSONObject) parser.parse(data));
+			if(this.input.available() > 0) {
+				// Read header
+				byte[] in = new byte[2048];
+				int i = 0;
+				byte b = 0;
+				while(b != '\n') {
+					b = (byte) this.input.read();
+					in[i++] = b;
+				}
+				// Parse header
+				String header = new String(in, StandardCharsets.UTF_8);
+				String[] args = header.trim().split(" ");
+				Response response = new Response(
+						Integer.valueOf(args[0]).intValue(), // Status code
+						// args[1], // Version
+						args[2] // Response id
+					);
+				String type = args[3];
+				int dataLength = Integer.valueOf(args[4]).intValue();
+				// Read data
+				if(type.matches("(JSON)|(TEXT)")) {
+					this.input.read(in, 0, dataLength);
+					in[dataLength] = 0;
+					String data = (new String(in, StandardCharsets.UTF_8)).substring(0, dataLength);
+					
+					if(type.matches("JSON")) {
+						JSONParser parser = new JSONParser();
+						response.setData((JSONObject) parser.parse(data));
+					}
+					else {
+						response.setData(data);
+					}
+				}
+				else if(type.matches("IMAGE")) {
+					System.out.println("[client] image received");
 				}
 				else {
-					response.setData(data);
+					System.err.println("[client] WTF is that data type ! '" + type + "' is unknown");
 				}
-			}
-			else if(type.matches("IMAGE")) {
-				System.out.println("[client] image received");
+				System.out.println("[client] response recieved");
+				return response;
 			}
 			else {
-				System.err.println("[client] WTF is that data type ! '" + type + "' is unknown");
+				System.err.println("[client] tried to read but nothing is available");
+				return null;
 			}
-			System.out.println("[client] response recieved");
-			return response;
-			
-		}
-		catch (IOException e) {
+		} catch (NumberFormatException | IOException | ParseException e) {
 			System.err.println("[client] error while reading");
-		} 
-		catch (ParseException e) {
 			e.printStackTrace();
-			System.err.println(e);
 		}
-		
 		return null;
 	}
 	
 	/**
-	 * Start two thread to handle request & response.
-	 * One will be in charge of sending packages.
-	 * The other will handle the response from the server and give the response to a registered client listener
+	 * Start the thread associated to the client, also create a queue to handle request and a map to handle listeners
+	 * If the thread can't write or read the client, it will try to connect to the server, the use of Client::connect is not mandatory
 	 */
-	public void startThreads() {
-		
-		this.requestQueue = new LinkedBlockingQueue<>();
+	public void startThread() {
+		this.requests = new ConcurrentLinkedQueue<>();
 		this.listeners = new HashMap<>();
-		
-		this.threads = new ThreadGroup("client");
-		this.threads.setDaemon(true);
-		Thread tSend = new Thread(this.threads, this::runSend, "send");
-		Thread tRecieve = new Thread(this.threads, this::runRecieve, "recieve");
-		
-		tSend.start();
-		tRecieve.start();
+		this.thread = new Thread(this::run, "client");
+		this.thread.start();
 	}
 	
 	/**
-	 * Check if one of the thread is alive
-	 * 
-	 * @return either the group is destroyed or not
+	 * Interrupt the client's thread
+	 * note: this method does not disconnect the client and the thread will not do it
 	 */
-	public boolean areThreadsAlive() {
-		return !this.threads.isDestroyed();
+	public void interruptThread() {
+		if(this.thread != null)
+			this.thread.interrupt();
 	}
 	
 	/**
-	 * Interrupt and notify all the running threads
+	 * Client's thread, it handles the requests queue and the client listeners
+	 * If the queue is not empty, it will send all the first request in it.
+	 * Then it tries to read incoming response, if it recieves one, it is sent to the listener.
+	 * And it goes back to the queue.
 	 */
-	public void interruptThreads() {
-		this.threads.interrupt();
-		this.threads.notifyAll();
-	}
-	
-	/**
-	 * Offer a new request to the request blocking queue,
-	 * Map the listener with the request id.
-	 * 
-	 * @param request The request to send to the server
-	 * @param listener The listener which will handle the response
-	 * @return either the request is in the queue or not
-	 */
-	public boolean send(Request request, ClientListener listener) {
-		boolean offered = this.requestQueue.offer(request);
-		if(offered)
-			this.listeners.put(request.getRequestId(), listener);
-		return offered;
-	}
-	
-	/**
-	 * Sending thread,
-	 * it get the request to send from the blocking queue,
-	 * the thread stops when it is interrupted.
-	 */
-	private void runSend() {
-		System.out.println("[client-send] start");
+	private void run() {
 		
 		boolean run = true;
 		while(run) {
 			
-			try {
-				Request request = this.requestQueue.take();
-				this.write(request);
-			}
-			catch (InterruptedException e) {
-				run = false;
+			// Send part
+			if(!this.requests.isEmpty()) {
+				this.write(this.requests.poll());
 			}
 			
-		}
-		
-		System.out.println("[client-send] end");
-	}
-	
-	/**
-	 * Recieving thread,
-	 * it recieve responses from the server and give the to listeners,
-	 * the threads stops when it is notified.
-	 */
-	private void runRecieve() {
-		System.out.println("[client-recv] start");
-
-		boolean run = true;
-		while(run) {
-			try {
-				Response response = this.read();
-				
-				if(this.listeners.containsKey(response.getId())) {
-					this.listeners.remove(response.getId()).handleResponse(response);
+			// Read
+			Response rep = this.read();
+			if(rep != null) {
+				if(this.listeners.containsKey(rep.getId())) {
+					this.listeners.get(rep.getId()).handleResponse(rep);
 				}
 				else {
-					System.err.println("[client-recv] response can't be handled");
+					System.err.println("[t_client] response lost");
 				}
 			}
-			catch(IllegalMonitorStateException e) {
+			
+			try {
+				Thread.sleep(10);
+			} catch (InterruptedException e) {
 				run = false;
 			}
 		}
-
-		System.out.println("[client-recv] end");
 	}
+	
+	/**
+	 * Ask the thread to send a request, the request is sent to the back of the queue.
+	 * 
+	 * @param request Request to send
+	 * @param listener The listener will be call back when a response is recieved
+	 */
+	public void send(Request request, ClientListener listener) {
+		
+		this.requests.add(request);
+		this.listeners.put(request.getRequestId(), listener);
+	}
+
 
 	/* ************************************************************************
 	 * Overrides

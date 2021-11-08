@@ -34,7 +34,7 @@ public class Client {
 	 * Attributes
 	 * ***********************************************************************/
 
-	public static final String VERSION = "Ozad/0.0.42.2021";
+	public static final String VERSION = "Ozad/0.0.452021";
 	
 	private String host;
 	private int port;

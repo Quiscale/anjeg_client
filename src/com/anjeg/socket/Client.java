@@ -239,6 +239,11 @@ public class Client {
 			else {
 				// Connect if needed
 				this.connect();
+				if(this.socket != null) {
+					this.connectListeners.forEach((listener) -> {
+						listener.handleResponse(null);
+					});
+				}
 			}
 			
 			try {

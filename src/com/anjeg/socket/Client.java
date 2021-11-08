@@ -34,6 +34,9 @@ public class Client {
 
 	public static final String VERSION = "Ozad/0.0.42.2021";
 	
+	private String host;
+	private int port;
+	
 	private Socket socket;
 	private InputStream input;
 	private PrintWriter output;
@@ -49,9 +52,15 @@ public class Client {
 	/**
 	 * Create a new client.
 	 * To start a connection with a server, use Client::connect.
+	 * 
+	 * @param host IP address "x.x.x.x"
+	 * @param port port address
 	 */
-	public Client() {
+	public Client(String host, int port) {
 		super();
+		
+		this.host = host;
+		this.port = port;
 		
 		this.socket = null;
 		this.input = null;
@@ -64,20 +73,17 @@ public class Client {
 
 	/**
 	 * Connect the client to a server using socket.
-	 * 
-	 * @param host IP address "x.x.x.x"
-	 * @param port port address
 	 */
-	public void connect(String host, int port) {
+	public void connect() {
 
 		try {
-			this.socket = new Socket(host, port);
+			this.socket = new Socket(this.host, this.port);
 			System.out.println("[client] connected");
 			this.input = this.socket.getInputStream();
 			this.output = new PrintWriter(new OutputStreamWriter(this.socket.getOutputStream()));
 			System.out.println("[client] reader & writer ready");
-		} catch (IOException e) {
-			e.printStackTrace();
+		}
+		catch (IOException e) {
 			System.err.println("[client] error while connecting");
 		}
 	}
@@ -88,15 +94,17 @@ public class Client {
 	 * use of this method.
 	 */
 	public void disconnect() {
-		try {
-			this.socket.close();
-			this.input.close();
-			this.output.close();
-			System.out.println("[client] disconnected");
-		}
-		catch (IOException e) {
-			e.printStackTrace();
-			System.err.println("[client] error while disconnecting");
+		
+		if(this.socket != null) {
+			try {
+				this.socket.close();
+				this.input.close();
+				this.output.close();
+				System.out.println("[client] disconnected");
+			}
+			catch (IOException e) {
+				System.err.println("[client] error while disconnecting");
+			}
 		}
 	}
 	
@@ -163,7 +171,7 @@ public class Client {
 				return response;
 			}
 			else {
-				System.err.println("[client] tried to read but nothing is available");
+				//System.err.println("[client] tried to read but nothing is available");
 				return null;
 			}
 		} catch (NumberFormatException | IOException | ParseException e) {
@@ -204,20 +212,29 @@ public class Client {
 		boolean run = true;
 		while(run) {
 			
-			// Send part
-			if(!this.requests.isEmpty()) {
-				this.write(this.requests.poll());
-			}
+			if(this.socket != null) {
 			
-			// Read
-			Response rep = this.read();
-			if(rep != null) {
-				if(this.listeners.containsKey(rep.getId())) {
-					this.listeners.get(rep.getId()).handleResponse(rep);
+				// Send part
+				if(!this.requests.isEmpty()) {
+					this.write(this.requests.poll());
 				}
-				else {
-					System.err.println("[t_client] response lost");
+				
+				// Read
+				Response rep = this.read();
+				// Give the response to the listener if it is registered
+				if(rep != null) {
+					if(this.listeners.containsKey(rep.getId())) {
+						this.listeners.get(rep.getId()).handleResponse(rep);
+					}
+					else {
+						System.err.println("[t_client] response lost");
+						System.err.println(rep.getData());
+					}
 				}
+			}
+			else {
+				// Connect if needed
+				this.connect();
 			}
 			
 			try {

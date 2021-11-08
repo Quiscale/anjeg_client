@@ -6,7 +6,9 @@ import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
@@ -44,6 +46,7 @@ public class Client {
 	private Thread thread;
 	private ConcurrentLinkedQueue<Request> requests;
 	private Map<String, ClientListener> listeners; // <requestId, listener>
+	private List<ClientListener> connectListeners;
 	
 	/* ************************************************************************
 	 * Constructor
@@ -188,6 +191,7 @@ public class Client {
 	public void startThread() {
 		this.requests = new ConcurrentLinkedQueue<>();
 		this.listeners = new HashMap<>();
+		this.connectListeners = new ArrayList<>();
 		this.thread = new Thread(this::run, "client");
 		this.thread.start();
 	}
@@ -224,7 +228,7 @@ public class Client {
 				// Give the response to the listener if it is registered
 				if(rep != null) {
 					if(this.listeners.containsKey(rep.getId())) {
-						this.listeners.get(rep.getId()).handleResponse(rep);
+						this.listeners.remove(rep.getId()).handleResponse(rep);
 					}
 					else {
 						System.err.println("[t_client] response lost");
@@ -255,6 +259,15 @@ public class Client {
 		
 		this.requests.add(request);
 		this.listeners.put(request.getRequestId(), listener);
+	}
+	
+	/**
+	 * Register a client listener which will handle a connection event when the socket is connected
+	 * 
+	 * @param listener 
+	 */
+	public void addOnConnect(ClientListener listener) {
+		this.connectListeners.add(listener);
 	}
 
 

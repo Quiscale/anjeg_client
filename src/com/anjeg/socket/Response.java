@@ -7,7 +7,7 @@ package com.anjeg.socket;
  * This class is made to encapsulate responses, and make it easier to read ID or data.
  *
  */
-public class Response {
+public class Response<T extends Data<?>> {
 
 	/* ************************************************************************
 	 * Constants
@@ -19,7 +19,7 @@ public class Response {
 
 	private int code;
 	private String response_id;
-	private Object data;
+	private T data;
 	
 	/* ************************************************************************
 	 * Constructor
@@ -68,7 +68,7 @@ public class Response {
 	 * @return The data object
 	 */
 	public Object getData() {
-		return this.data;
+		return this.data.getData();
 	}
 	
 	/**
@@ -76,7 +76,7 @@ public class Response {
 	 * 
 	 * @param data An object which represents the data
 	 */
-	public void setData(Object data) {
+	public void setData(T data) {
 		this.data = data;
 	}
 	

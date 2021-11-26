@@ -4,6 +4,8 @@ import java.util.Random;
 
 import org.json.simple.JSONObject;
 
+import com.anjeg.socket.data_type.JsonData;
+
 /**
  * 
  * @author quentin
@@ -12,7 +14,7 @@ import org.json.simple.JSONObject;
  * it's main purpose is to build the request header, and join the
  * optional data.
  */
-public class Request {
+public class Request<T extends Data<?>> {
 
 	/* ************************************************************************
 	 * Constants
@@ -30,7 +32,7 @@ public class Request {
 	private String request_id;
 	private String client_id;
 	private boolean client_id_needed;
-	private String data;
+	private T data;
 	
 	/* ************************************************************************
 	 * Constructor
@@ -47,7 +49,7 @@ public class Request {
 	 * @param data The data to send with the header, it can be null
 	 * @param client_id_needed Tell if the client id is either mandatory or not
 	 */
-	public Request(String command, String url, String request_id, String data, boolean client_id_needed) {
+	public Request(String command, String url, String request_id, T data, boolean client_id_needed) {
 		super();
 		
 		this.command = command;
@@ -68,7 +70,7 @@ public class Request {
 	 * @param request_id The request ID, it is use to identify the future response which will have the same ID
 	 * @param data The data to send with the header, it can be null
 	 */
-	public Request(String command, String url, String request_id, String data) {
+	public Request(String command, String url, String request_id, T data) {
 		this(command, url, request_id, data, true);
 	}
 	
@@ -92,7 +94,7 @@ public class Request {
 	 * @param needed True if the ID is needed
 	 * @return The current request
 	 */
-	public Request setClientIdNeeded(boolean needed) {
+	public Request<T> setClientIdNeeded(boolean needed) {
 		this.client_id_needed = needed;
 		return this;
 	}
@@ -103,10 +105,57 @@ public class Request {
 	 * @param client_id The client ID
 	 * @return The current request
 	 */
-	public Request withId(String client_id) {
+	public Request<T> withId(String client_id) {
 		if(this.client_id_needed)
 			this.client_id = client_id;
 		return this;
+	}
+	
+	public byte[] toBytes() {
+
+		byte[] dataBytes = null;
+		byte[][] bytesArray = null;
+		if(this.data == null) {
+			bytesArray = new byte[][] {
+				this.command.getBytes(),
+				this.url.getBytes(),
+				this.request_id.getBytes(),
+				this.client_id.getBytes()
+			};
+		}
+		else {
+			dataBytes = this.data.toBytes();
+			bytesArray = new byte[][] {
+				this.command.getBytes(),
+				this.url.getBytes(),
+				this.request_id.getBytes(),
+				this.client_id.getBytes(),
+				this.data.getName().getBytes(),
+				String.valueOf(dataBytes.length).getBytes()
+			};
+		}
+		
+		// Compute full size
+		int len = 0;
+		for(byte[] b : bytesArray) {
+			len += b.length +1;
+		}
+		if(dataBytes != null)
+			len += dataBytes.length;
+		
+		// Fill final byte array
+		int n = 0;
+		byte[] bytes = new byte[len];
+		for(byte[] b : bytesArray) {
+			System.arraycopy(b, 0, bytes, n, b.length);
+			n += b.length;
+			bytes[n++] = ' ';
+		}
+		bytes[n-1] = '\n';
+		if(dataBytes != null)
+			System.arraycopy(dataBytes, 0, bytes, n, dataBytes.length);
+		
+		return bytes;
 	}
 	
 	/**
@@ -118,7 +167,7 @@ public class Request {
 	 * @param json The request data
 	 * @return A request object with a random ID
 	 */
-	public static Request build(String command, String url, JSONObject json) {
+	public static Request<JsonData> build(String command, String url, JSONObject json) {
 
 		// Generate request id from alphanumeric value
 		String request_id = randomizer.ints(48, 123)
@@ -128,12 +177,12 @@ public class Request {
 			.toString();
 
 		// Data
-		String data = "";
+		JsonData data = null;
 		if(json != null) {
-			data = json.toJSONString();
+			data = new JsonData(json);
 		}
 		
-		return new Request(command, url, request_id, data);
+		return new Request<JsonData>(command, url, request_id, data);
 	}
 	
 	/* ************************************************************************
@@ -146,12 +195,11 @@ public class Request {
 		// Header
 		String header = this.command
 				+ " " + this.url
-				+ " " + Client.VERSION
 				+ " " + this.request_id
 				+ " " + this.client_id;
 		
-		if(this.data.length() > 0)
-			header += " " + this.data.length();
+		if(this.data != null)
+			header += " " + this.data.getName();
 		
 		return header + "\n" + this.data;
 	}

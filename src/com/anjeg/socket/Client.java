@@ -2,8 +2,7 @@ package com.anjeg.socket;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStreamWriter;
-import java.io.PrintWriter;
+import java.io.OutputStream;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -15,6 +14,9 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 import org.json.simple.parser.ParseException;
+
+import com.anjeg.socket.data_type.JsonData;
+import com.anjeg.socket.data_type.TextData;
 
 /**
  * 
@@ -41,10 +43,10 @@ public class Client {
 	
 	private Socket socket;
 	private InputStream input;
-	private PrintWriter output;
+	private OutputStream output;
 	
 	private Thread thread;
-	private ConcurrentLinkedQueue<Request> requests;
+	private ConcurrentLinkedQueue<Request<?>> requests;
 	private Map<String, ClientListener> listeners; // <requestId, listener>
 	private List<ClientListener> connectListeners;
 	
@@ -83,7 +85,7 @@ public class Client {
 			this.socket = new Socket(this.host, this.port);
 			System.out.println("[client] connected");
 			this.input = this.socket.getInputStream();
-			this.output = new PrintWriter(new OutputStreamWriter(this.socket.getOutputStream()));
+			this.output = this.socket.getOutputStream();
 			System.out.println("[client] reader & writer ready");
 		}
 		catch (IOException e) {
@@ -116,10 +118,15 @@ public class Client {
 	 * 
 	 * @param request The request to send encapsulated in a Request object
 	 */
-	public void write(Request request) {
-		output.print(request);
-		output.flush();
-		System.out.println("[client] request sent");
+	public void write(Request<?> request) {
+		try {
+			output.write(request.toBytes());
+			output.flush();
+			System.out.println("[client] request sent");
+		}
+		catch (IOException e) {
+			e.printStackTrace();
+		}
 	}
 	
 	/**
@@ -128,7 +135,7 @@ public class Client {
 	 * 
 	 * @return a Response object which encapsulate the server's response
 	 */
-	public Response read() {
+	public Response<?> read() {
 		
 		try {
 			if(this.input.available() > 0) {
@@ -143,32 +150,35 @@ public class Client {
 				// Parse header
 				String header = new String(in, StandardCharsets.UTF_8);
 				String[] args = header.trim().split(" ");
-				Response response = new Response(
-						Integer.valueOf(args[0]).intValue(), // Status code
-						// args[1], // Version
-						args[2] // Response id
-					);
-				String type = args[3];
-				int dataLength = Integer.valueOf(args[4]).intValue();
+				// split header into variables
+				int 	status = Integer.valueOf(args[0]).intValue();
+				String 	id = args[1];
+				String 	dataType = args[2];
+				int 	dataLength = Integer.valueOf(args[3]).intValue();
+				// Prepare response
+				Response<?> response = null;
 				// Read data
-				if(type.matches("(JSON)|(TEXT)")) {
+				if(dataType.matches("(JSON)|(TEXT)")) {
 					this.input.read(in, 0, dataLength);
 					in[dataLength] = 0;
 					String data = (new String(in, StandardCharsets.UTF_8)).substring(0, dataLength);
 					
-					if(type.matches("JSON")) {
+					if(dataType.matches("JSON")) {
 						JSONParser parser = new JSONParser();
-						response.setData((JSONObject) parser.parse(data));
+						response = new Response<JsonData>(status, id);
+						((Response<JsonData>) response).setData(
+								new JsonData((JSONObject) parser.parse(data)));
 					}
 					else {
-						response.setData(data);
+						response = new Response<TextData>(status, id);
+						((Response<TextData>) response).setData(new TextData(data));
 					}
 				}
-				else if(type.matches("IMAGE")) {
+				else if(dataType.matches("IMAGE")) {
 					System.out.println("[client] image received");
 				}
 				else {
-					System.err.println("[client] WTF is that data type ! '" + type + "' is unknown");
+					System.err.println("[client] WTF is that data type ! '" + dataType + "' is unknown");
 				}
 				System.out.println("[client] response recieved");
 				return response;
@@ -224,7 +234,7 @@ public class Client {
 				}
 				
 				// Read
-				Response rep = this.read();
+				Response<?> rep = this.read();
 				// Give the response to the listener if it is registered
 				if(rep != null) {
 					if(this.listeners.containsKey(rep.getId())) {
@@ -260,7 +270,7 @@ public class Client {
 	 * @param request Request to send
 	 * @param listener The listener will be call back when a response is recieved
 	 */
-	public void send(Request request, ClientListener listener) {
+	public void send(Request<?> request, ClientListener listener) {
 		
 		this.requests.add(request);
 		this.listeners.put(request.getRequestId(), listener);
@@ -275,6 +285,14 @@ public class Client {
 		this.connectListeners.add(listener);
 	}
 
+	/**
+	 * Ask the client if it is connected or not
+	 * 
+	 * @return True if connected
+	 */
+	public boolean isConnected() {
+		return this.socket != null;
+	}
 
 	/* ************************************************************************
 	 * Overrides

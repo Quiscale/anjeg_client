@@ -7,8 +7,10 @@ public interface ClientListener {
 	 * ***********************************************************************/
 
 	/**
-	 * This method is made to 
-	 * @param response
+	 * This method is made to handle the response from the client
+	 * for a given request
+	 * 
+	 * @param response Response sent by the server
 	 */
 	public void handleResponse(Response<?> response);
 	

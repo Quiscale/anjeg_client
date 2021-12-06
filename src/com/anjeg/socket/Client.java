@@ -23,7 +23,7 @@ import com.anjeg.socket.data_type.TextData;
  * @author Quiscale
  *
  * The client class is able to connect itself through a socket, send
- * requests and recieve response.
+ * requests and receive response.
  *
  */
 public class Client {
@@ -35,16 +35,17 @@ public class Client {
 	/* ************************************************************************
 	 * Attributes
 	 * ***********************************************************************/
-
-	public static final String VERSION = "Ozad/0.0.452021";
 	
+	// Server ip & port
 	private String host;
 	private int port;
 	
+	// Web socket & streams
 	private Socket socket;
 	private InputStream input;
 	private OutputStream output;
 	
+	// Thread's usefull attributes
 	private Thread thread;
 	private ConcurrentLinkedQueue<Request<?>> requests;
 	private Map<String, ClientListener> listeners; // <requestId, listener>
@@ -159,6 +160,7 @@ public class Client {
 				Response<?> response = null;
 				// Read data
 				if(dataType.matches("(JSON)|(TEXT)")) {
+					// Read text
 					this.input.read(in, 0, dataLength);
 					in[dataLength] = 0;
 					String data = (new String(in, StandardCharsets.UTF_8)).substring(0, dataLength);
@@ -175,6 +177,7 @@ public class Client {
 					}
 				}
 				else if(dataType.matches("IMAGE")) {
+					// TODO implements image parsing
 					System.out.println("[client] image received");
 				}
 				else {
@@ -218,7 +221,7 @@ public class Client {
 	/**
 	 * Client's thread, it handles the requests queue and the client listeners
 	 * If the queue is not empty, it will send all the first request in it.
-	 * Then it tries to read incoming response, if it recieves one, it is sent to the listener.
+	 * Then it tries to read incoming response, if it receives one, it is sent to the listener.
 	 * And it goes back to the queue.
 	 */
 	private void run() {
@@ -268,7 +271,7 @@ public class Client {
 	 * Ask the thread to send a request, the request is sent to the back of the queue.
 	 * 
 	 * @param request Request to send
-	 * @param listener The listener will be call back when a response is recieved
+	 * @param listener The listener will be call back when a response is received
 	 */
 	public void send(Request<?> request, ClientListener listener) {
 		

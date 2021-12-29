@@ -90,7 +90,7 @@ public class Client {
 			System.out.println("[client] reader & writer ready");
 		}
 		catch (IOException e) {
-			System.err.println("[client] error while connecting");
+			//System.err.println("[client] error while connecting");
 		}
 	}
 	

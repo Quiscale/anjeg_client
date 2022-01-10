@@ -164,7 +164,7 @@ public class Request<T extends Data<?>> {
 	 * 
 	 * @param command The request command
 	 * @param url The command url
-	 * @param json The request data
+	 * @param json The request data, can be null if nothing have to be sent
 	 * @return A request object with a random ID
 	 */
 	public static Request<JsonData> build(String command, String url, JSONObject json) {

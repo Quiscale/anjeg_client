@@ -2,7 +2,7 @@
 
 This framework is made to handle request and response from Anjeg's clients and servers. \
 It is made to transfert text, json, and images with low header size. \
-I also made it to see if I was able to do it and because I did not want to look for existing framework that are too big from this project.
+I also made it to see if I was able to do it and because I did not want to look for existing framework that are too big for this project.
 
 # Classes
 
@@ -10,6 +10,8 @@ I also made it to see if I was able to do it and because I did not want to look 
 
 The Client class is here to handle a web socket. It needs an IP and a port to connect and there are two ways to use it. \
 By using connect/disconnect/write/read functions in synchrone, or by using startThread/interruptThread/send for asynchrone. The second way use ClientListener to handle responses.
+
+It doesn't reconnect if it lose connection <- TODO
 
 ## ClientListener
 
